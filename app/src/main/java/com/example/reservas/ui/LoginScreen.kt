@@ -179,19 +179,17 @@ fun LoginScreen(onLoginSuccess: () -> Unit) {
                                     if (response.isSuccessful) {
                                         val token = response.body()?.accessToken
                                         if (token != null) {
-                                            SecurityManager.saveToken(context, token)
-                                            SessionManager.markAuthenticated()
-
-                                            // Obtener ID de usuario
                                             val userResponse = RetrofitClient.instance.getMe("Bearer $token")
-                                            if (userResponse.isSuccessful) {
-                                                userResponse.body()?.id?.let { userId ->
-                                                    SecurityManager.saveUserId(context, userId)
-                                                }
-                                            }
+                                            val userId = userResponse.body()?.id
 
-                                            Toast.makeText(context, "¡Bienvenido!", Toast.LENGTH_SHORT).show()
-                                            onLoginSuccess()
+                                            if (userResponse.isSuccessful && userId != null) {
+                                                SecurityManager.saveSession(context, token, userId)
+                                                SessionManager.markAuthenticated()
+                                                Toast.makeText(context, "¡Bienvenido!", Toast.LENGTH_SHORT).show()
+                                                onLoginSuccess()
+                                            } else {
+                                                Toast.makeText(context, "No se pudo validar la sesi�n", Toast.LENGTH_LONG).show()
+                                            }
                                         }
                                     } else {
                                         val errorMsg = when (response.code()) {
