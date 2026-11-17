@@ -13,8 +13,8 @@ android {
         applicationId = "com.example.reservas"
         minSdk = 24
         targetSdk = 36
-        versionCode = 2
-        versionName = "0.2.3"
+        versionCode = 3
+        versionName = "0.2.4"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
@@ -61,6 +61,7 @@ dependencies {
     implementation(libs.retrofit.gson)
     implementation(libs.okhttp.logging)
     implementation(libs.vico.compose)
+    implementation(libs.osmdroid.android)
     implementation(libs.androidx.compose.ui.tooling.preview)
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.lifecycle.runtime.ktx)

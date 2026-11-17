@@ -5,11 +5,13 @@ import android.content.SharedPreferences
 import android.util.Log
 import androidx.security.crypto.EncryptedSharedPreferences
 import androidx.security.crypto.MasterKeys
+import java.security.KeyStore
 
 object SecurityManager {
     private const val PREFS_NAME = "secure_prefs"
     private const val KEY_TOKEN = "auth_token"
     private const val KEY_USER_ID = "user_id"
+    private const val ANDROID_KEYSTORE = "AndroidKeyStore"
 
     class SecureStorageException(
         message: String,
@@ -21,18 +23,45 @@ object SecurityManager {
     private fun getPrefs(context: Context): SharedPreferences {
         prefs?.let { return it }
 
+        val appContext = context.applicationContext
         return try {
-            val masterKeyAlias = MasterKeys.getOrCreate(MasterKeys.AES256_GCM_SPEC)
-            EncryptedSharedPreferences.create(
-                PREFS_NAME,
-                masterKeyAlias,
-                context.applicationContext,
-                EncryptedSharedPreferences.PrefKeyEncryptionScheme.AES256_SIV,
-                EncryptedSharedPreferences.PrefValueEncryptionScheme.AES256_GCM
-            ).also { prefs = it }
+            createEncryptedPrefs(appContext).also { prefs = it }
         } catch (e: Exception) {
-            Log.e("SecurityManager", "Unable to initialize encrypted token storage", e)
-            throw SecureStorageException("Secure token storage is unavailable", e)
+            Log.w("SecurityManager", "Encrypted token storage is invalid. Recreating it.", e)
+            resetEncryptedStorage(appContext)
+
+            try {
+                createEncryptedPrefs(appContext).also { prefs = it }
+            } catch (retryException: Exception) {
+                Log.e("SecurityManager", "Unable to initialize encrypted token storage", retryException)
+                throw SecureStorageException("Secure token storage is unavailable", retryException)
+            }
+        }
+    }
+
+    private fun createEncryptedPrefs(appContext: Context): SharedPreferences {
+        val masterKeyAlias = MasterKeys.getOrCreate(MasterKeys.AES256_GCM_SPEC)
+        return EncryptedSharedPreferences.create(
+            PREFS_NAME,
+            masterKeyAlias,
+            appContext,
+            EncryptedSharedPreferences.PrefKeyEncryptionScheme.AES256_SIV,
+            EncryptedSharedPreferences.PrefValueEncryptionScheme.AES256_GCM
+        )
+    }
+
+    private fun resetEncryptedStorage(appContext: Context) {
+        prefs = null
+        appContext.deleteSharedPreferences(PREFS_NAME)
+
+        try {
+            val keyStore = KeyStore.getInstance(ANDROID_KEYSTORE).apply { load(null) }
+            val masterKeyAlias = MasterKeys.getOrCreate(MasterKeys.AES256_GCM_SPEC)
+            if (keyStore.containsAlias(masterKeyAlias)) {
+                keyStore.deleteEntry(masterKeyAlias)
+            }
+        } catch (e: Exception) {
+            Log.w("SecurityManager", "Unable to delete encrypted storage master key", e)
         }
     }
 

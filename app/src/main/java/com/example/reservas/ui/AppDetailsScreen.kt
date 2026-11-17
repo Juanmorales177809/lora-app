@@ -63,7 +63,7 @@ fun AppDetailsScreen(
         }
 
         try {
-            val response = RetrofitClient.instance.getSensorsByApplication(
+            val response = RetrofitClient.instance.getSensorsListByAppLora(
                 "Bearer $token",
                 appId
             )
@@ -196,11 +196,7 @@ fun SensorCard(
                 )
 
                 Text(
-                    text = if (isActive) {
-                        "Latest telemetry: ${formatDate(sensor.last_update)}"
-                    } else {
-                        "Last seen: ${formatDate(sensor.last_update)}"
-                    },
+                    text = formatDate(sensor.last_update),
                     fontSize = 11.sp,
                     color = Color.Black.copy(alpha = 0.6f)
                 )

@@ -14,6 +14,7 @@ securityCrypto = "1.1.0-alpha06"
 retrofit = "2.9.0"
 okhttp = "4.12.0"
 vico = "3.2.3"
+osmdroid = "6.1.18"
 
 [libraries]
 androidx-core-ktx = { group = "androidx.core", name = "core-ktx", version.ref = "coreKtx" }
@@ -38,6 +39,7 @@ retrofit = { group = "com.squareup.retrofit2", name = "retrofit", version.ref = 
 retrofit-gson = { group = "com.squareup.retrofit2", name = "converter-gson", version.ref = "retrofit" }
 okhttp-logging = { group = "com.squareup.okhttp3", name = "logging-interceptor", version.ref = "okhttp" }
 vico-compose = { group = "com.patrykandpatrick.vico", name = "compose", version.ref = "vico" }
+osmdroid-android = { group = "org.osmdroid", name = "osmdroid-android", version.ref = "osmdroid" }
 
 [plugins]
 android-application = { id = "com.android.application", version.ref = "agp" }

@@ -5,6 +5,25 @@ import retrofit2.Response
 import retrofit2.http.*
 
 interface CoriotApiService {
+    @GET("api/gateways")
+    suspend fun getGateways(
+        @Header("Authorization") token: String,
+        @Query("limit") limit: Int = 10
+    ): Response<GatewayListResponse>
+
+    @GET("api/gateway/{gatewayId}")
+    suspend fun getGateway(
+        @Header("Authorization") token: String,
+        @Path("gatewayId", encoded = true) gatewayId: String
+    ): Response<GatewayDetailResponse>
+
+    @PUT("api/gateways/{gatewayId}")
+    suspend fun updateGateway(
+        @Header("Authorization") token: String,
+        @Path("gatewayId", encoded = true) gatewayId: String,
+        @Body request: GatewayUpdateEnvelope
+    ): Response<Unit>
+
     @FormUrlEncoded
     @POST("api/auth/login")
     suspend fun login(
@@ -23,9 +42,16 @@ interface CoriotApiService {
         @Query("application_id") applicationId: String
     ): Response<ApplicationSensorsResponse>
 
+    @GET("https://api.coriotlab.co/api/sensors/sensors-list")
+    suspend fun getSensorsListByAppLora(
+        @Header("Authorization") token: String,
+        @Query("id_app_lora") appLoraId: String
+    ): Response<ApplicationSensorsResponse>
+
     @GET("api/sensors/history")
     suspend fun getSensorHistory(
         @Header("Authorization") token: String,
+        @Query("application_id") applicationId: String,
         @Query("sensor_name") sensorName: String,
         @Query("range") range: String = "1h"
     ): Response<SensorHistoryResponse>

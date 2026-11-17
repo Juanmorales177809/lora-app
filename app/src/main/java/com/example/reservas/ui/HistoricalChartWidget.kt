@@ -105,8 +105,9 @@ fun HistoricalChartWidget(
             val rawMax = readings.max()
             val avg = readings.average()
 
-            when (widget.variable_key.lowercase()) {
-                "temp" -> {
+            // Fase 2 genérica: ventana especial solo para temp/humi, resto genérico.
+            when (widget.variable_key.lowercase().trim()) {
+                "temp", "temperature" -> {
                     val padding = 1.0
                     val minWindow = 5.0
                     var minY = rawMin - padding
@@ -117,7 +118,7 @@ fun HistoricalChartWidget(
                     }
                     CartesianLayerRangeProvider.fixed(minY = minY, maxY = maxY)
                 }
-                "humi" -> {
+                "humi", "humidity" -> {
                     val padding = 3.0
                     val minWindow = 10.0
                     var minY = (rawMin - padding).coerceAtLeast(0.0)
@@ -129,11 +130,7 @@ fun HistoricalChartWidget(
                     }
                     CartesianLayerRangeProvider.fixed(minY = minY, maxY = maxY)
                 }
-                "batt" -> {
-                    val delta = rawMax - rawMin
-                    val margin = if (delta == 0.0) 0.1 else delta * 0.1
-                    CartesianLayerRangeProvider.fixed(minY = rawMin - margin, maxY = rawMax + margin)
-                }
+                // batt y cualquier otra variable usan rango genérico.
                 else -> {
                     val delta = rawMax - rawMin
                     val margin = if (delta == 0.0) 1.0 else delta * 0.15
@@ -198,6 +195,7 @@ fun HistoricalChartWidget(
         try {
             val response = RetrofitClient.instance.getSensorHistory(
                 token = "Bearer $token",
+                applicationId = widget.application_id,
                 sensorName = widget.sensor_name,
                 range = selectedRange
             )
@@ -308,7 +306,8 @@ fun HistoricalChartWidget(
                     Text(text = "Live value", fontSize = 10.sp, color = Color.Gray)
                     Text(
                         text = liveValue?.let { value ->
-                            val formatted = if (widget.variable_key == "batt") {
+                            // Fase 2 genérica: precisión por unidad, no por key.
+                            val formatted = if (widget.unit.equals("V", ignoreCase = true)) {
                                 "%.3f".format(value)
                             } else {
                                 "%.2f".format(value)
@@ -410,7 +409,7 @@ fun HistoricalChartWidget(
                             
                             CartesianValueFormatter { _, value, _ ->
                                 when {
-                                    widget.variable_key == "batt" -> "%.3f".format(value)
+                                    widget.unit.equals("V", ignoreCase = true) -> "%.3f".format(value)
                                     delta < 0.5 -> "%.2f".format(value)
                                     else -> "%.1f".format(value)
                                 }
@@ -539,11 +538,5 @@ private fun formatHistoryAxisLabel(epochMillis: Double, range: String): String {
         Date(epochMillis.toLong())
     )
 }
-private fun SensorHistoryReading.valueFor(variableKey: String): Double? {
-    return when (variableKey.lowercase()) {
-        "temp" -> temp
-        "humi" -> humi
-        "batt" -> batt
-        else -> null
-    }
-}
+// Fase 2: eliminado valueFor() extensión legacy — ahora se usa el miembro
+// SensorHistoryReading.valueFor() genérico (values map) de AuthModels.kt.

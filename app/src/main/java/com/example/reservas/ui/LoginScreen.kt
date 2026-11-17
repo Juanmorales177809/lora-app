@@ -188,7 +188,7 @@ fun LoginScreen(onLoginSuccess: () -> Unit) {
                                                 Toast.makeText(context, "¡Bienvenido!", Toast.LENGTH_SHORT).show()
                                                 onLoginSuccess()
                                             } else {
-                                                Toast.makeText(context, "No se pudo validar la sesi�n", Toast.LENGTH_LONG).show()
+                                                Toast.makeText(context, "No se pudo validar la sesión", Toast.LENGTH_LONG).show()
                                             }
                                         }
                                     } else {

@@ -88,7 +88,11 @@ fun DashboardDetailScreen(
             return
         }
 
-        val label = telemetryVariableLabel(selection.variableKey)
+        // Fase 2 genérica: labels/units del sensor si existen.
+        val label = selection.option.sensor.getLabel(selection.variableKey)
+            .ifBlank { telemetryVariableLabel(selection.variableKey) }
+        val unit = selection.option.sensor.getUnit(selection.variableKey)
+            .ifBlank { telemetryVariableUnit(selection.variableKey) }
         val visualization = if (chartType == null) {
             WidgetVisualization(
                 type = "stat_card",
@@ -110,7 +114,7 @@ fun DashboardDetailScreen(
             sensor_name = selection.option.sensor.sensor_name,
             variable_key = selection.variableKey,
             variable_label = label,
-            unit = telemetryVariableUnit(selection.variableKey),
+            unit = unit,
             visualization = visualization,
             position = currentWidget?.position ?: WidgetPosition(order = nextOrder, width = "full")
         )
@@ -213,6 +217,9 @@ fun DashboardDetailScreen(
         if (token == null || dashboard == null) return@LaunchedEffect
 
         val sensorNames = dashboard!!.config.widgets.map { it.sensor_name }.distinct()
+        val dashboardSensorKeys = dashboard!!.config.widgets
+            .map { "${it.application_id}::${it.sensor_name}" }
+            .toSet()
 
         while (true) {
             try {
@@ -222,20 +229,18 @@ fun DashboardDetailScreen(
                     val allData = mutableMapOf<String, SensorLatestResponse>()
                     val loadedOptions = mutableListOf<DashboardSensorOption>()
                     apps.forEach { app ->
-                        app.id_app_lora?.let { loraId ->
-                            val sensorsResp = RetrofitClient.instance.getSensorsByApplication("Bearer $token", loraId)
-                            if (sensorsResp.isSuccessful) {
-                                sensorsResp.body()?.sensors?.forEach { sensor ->
-                                    loadedOptions.add(
-                                        DashboardSensorOption(
-                                            applicationId = loraId,
-                                            sensor = sensor
-                                        )
-                                    )
-                                    if (sensorNames.contains(sensor.sensor_name)) {
-                                        allData[sensor.sensor_name] = sensor
-                                    }
-                                }
+                        val appSensors = fetchSensorsForApp(token, app)
+                        val loraId = app.id_app_lora.takeUnless { it.isNullOrBlank() } ?: app.id.toString()
+                        appSensors.forEach { sensor ->
+                            val option = DashboardSensorOption(
+                                applicationId = loraId,
+                                sensor = sensor
+                            )
+                            if (dashboardSensorKeys.contains(dashboardSensorKey(option))) {
+                                loadedOptions.add(option)
+                            }
+                            if (sensorNames.contains(sensor.sensor_name)) {
+                                allData[sensor.sensor_name] = sensor
                             }
                         }
                     }
@@ -540,17 +545,25 @@ fun RefinedWidgetCard(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.Start
             ) {
-                val icon = when(widget.variable_key) {
+                // Fase 2 genérica: iconos/colores especiales solo para temp/humi/batt, resto genérico.
+                val icon = when(widget.variable_key.lowercase().trim()) {
                     "temp" -> Icons.Default.DeviceThermostat
                     "humi" -> Icons.Default.WaterDrop
                     "batt" -> Icons.Default.BatteryChargingFull
-                    else -> Icons.Default.Bolt
+                    "co2", "co₂" -> Icons.Default.Cloud
+                    "ph" -> Icons.Default.Science
+                    "pressure", "press" -> Icons.Default.Speed
+                    "lux", "light" -> Icons.Default.LightMode
+                    "humidity" -> Icons.Default.WaterDrop
+                    "temperature" -> Icons.Default.DeviceThermostat
+                    "battery" -> Icons.Default.BatteryChargingFull
+                    else -> Icons.Default.Sensors
                 }
                 
-                val iconColor = when(widget.variable_key) {
-                    "temp" -> Color(0xFF1890FF)
-                    "humi" -> Color(0xFF13C2C2)
-                    "batt" -> {
+                val iconColor = when(widget.variable_key.lowercase().trim()) {
+                    "temp", "temperature" -> Color(0xFF1890FF)
+                    "humi", "humidity" -> Color(0xFF13C2C2)
+                    "batt", "battery" -> {
                         when (batteryLevel?.lowercase()?.trim()) {
                             "bajo", "low" -> Color.Red
                             "medio", "medium" -> Color(0xFFFFC107) // Amarillo
@@ -580,8 +593,9 @@ fun RefinedWidgetCard(
                 
                 Row(verticalAlignment = Alignment.Bottom) {
                     Text(
+                        // Fase 2 genérica: 3 decimales solo si la unidad sugiere alta precisión (V) o valor pequeño.
                         text = if (value != null) {
-                            if (widget.variable_key == "batt") "%.3f".format(value) else "%.2f".format(value)
+                            if (widget.unit.equals("V", ignoreCase = true)) "%.3f".format(value) else "%.2f".format(value)
                         } else "--.---",
                         fontSize = 26.sp,
                         fontWeight = FontWeight.Bold,

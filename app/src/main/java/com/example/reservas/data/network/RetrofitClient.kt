@@ -14,8 +14,10 @@ object RetrofitClient {
         redactHeader("Authorization")
         redactHeader("Cookie")
         redactHeader("Set-Cookie")
+        // Headers are redacted, but response bodies can still contain telemetry or PII.
+        // Keep debug networking useful without logging payloads by default.
         level = if (BuildConfig.DEBUG) {
-            HttpLoggingInterceptor.Level.BODY
+            HttpLoggingInterceptor.Level.BASIC
         } else {
             HttpLoggingInterceptor.Level.NONE
         }

@@ -54,12 +54,8 @@ fun DashboardWidgetsGrid(
             }
         ) { widget ->
             val sensor = sensorsData[widget.sensor_name]
-            val value = when (widget.variable_key) {
-                "temp" -> sensor?.temp
-                "humi" -> sensor?.humi
-                "batt" -> sensor?.batt
-                else -> null
-            }
+            // Fase 2 genérica: lookup en mapa, compat con temp/humi/batt vía getVariable().
+            val value = sensor?.getVariable(widget.variable_key)
 
             if (charts) {
                 HistoricalChartWidget(
@@ -281,9 +277,6 @@ fun AddDashboardWidgetDialog(
 }
 
 private fun availableWidgetVariables(sensor: SensorLatestResponse): List<String> {
-    return buildList {
-        if (sensor.temp != null) add("temp")
-        if (sensor.humi != null) add("humi")
-        if (sensor.batt != null) add("batt")
-    }
+    // Fase 2 genérica: todas las keys disponibles, ordenadas.
+    return sensor.availableKeys().sorted()
 }

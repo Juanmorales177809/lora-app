@@ -2,6 +2,7 @@ package com.example.reservas.ui
 
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
@@ -54,12 +55,16 @@ sealed class Screen(val route: String) {
     object DashboardDetail : Screen("dashboard_detail/{dashboardId}") {
         fun createRoute(id: Int) = "dashboard_detail/$id"
     }
+    object GatewayDetails : Screen("gateway_details/{gatewayId}") {
+        fun createRoute(gatewayId: String) = "gateway_details/${URLEncoder.encode(gatewayId, StandardCharsets.UTF_8.toString())}"
+    }
 }
 
 sealed class BottomNavItem(val route: String, val icon: androidx.compose.ui.graphics.vector.ImageVector, val label: String) {
     object Inicio : BottomNavItem("inicio", Icons.Default.Home, "Home")
     object Dashboards : BottomNavItem("dashboards", Icons.Default.SpaceDashboard, "Dashboard")
     object Apps : BottomNavItem("apps", Icons.Default.Apps, "Apps")
+    object Gateways : BottomNavItem("gateways", Icons.Default.Router, "Gateways")
     object Alerts : BottomNavItem("alerts", Icons.Default.NotificationsActive, "Alerts")
     object Perfil : BottomNavItem("perfil", Icons.Default.Person, "Profile")
 }
@@ -88,11 +93,12 @@ fun AppNavigation(navController: NavHostController, startDestination: String = S
         BottomNavItem.Inicio,
         BottomNavItem.Dashboards,
         BottomNavItem.Apps,
+        BottomNavItem.Gateways,
         BottomNavItem.Alerts,
         BottomNavItem.Perfil
     )
 
-    val rootScreens = listOf("inicio", "dashboards", "apps", "alerts", "perfil")
+    val rootScreens = listOf("inicio", "dashboards", "apps", "gateways", "alerts", "perfil")
     val currentRoute = currentDestination?.route
     val isRootScreen = currentRoute in rootScreens
 
@@ -106,7 +112,17 @@ fun AppNavigation(navController: NavHostController, startDestination: String = S
                             Image(
                                 painter = painterResource(id = R.drawable.favicon_coriot),
                                 contentDescription = null,
-                                modifier = Modifier.size(28.dp)
+                                modifier = Modifier
+                                    .size(28.dp)
+                                    .clickable {
+                                        navController.navigate(Screen.Main.route) {
+                                            popUpTo(navController.graph.findStartDestination().id) {
+                                                saveState = false
+                                            }
+                                            launchSingleTop = true
+                                            restoreState = false
+                                        }
+                                    }
                             )
                             Spacer(modifier = Modifier.width(12.dp))
                             Text(
@@ -114,6 +130,7 @@ fun AppNavigation(navController: NavHostController, startDestination: String = S
                                     currentRoute == "inicio" -> "Home"
                                     currentRoute == "dashboards" -> "Dashboard"
                                     currentRoute == "apps" -> "Applications"
+                                    currentRoute == "gateways" -> "Gateways"
                                     currentRoute == "alerts" -> "Alert Rules"
                                     currentRoute == "perfil" -> "Profile"
                                     currentRoute?.startsWith("app_details") == true -> "Sensors"
@@ -162,10 +179,10 @@ fun AppNavigation(navController: NavHostController, startDestination: String = S
                             onClick = {
                                 navController.navigate(item.route) {
                                     popUpTo(navController.graph.findStartDestination().id) {
-                                        saveState = true
+                                        saveState = false
                                     }
                                     launchSingleTop = true
-                                    restoreState = true
+                                    restoreState = false
                                 }
                             },
                             colors = NavigationBarItemDefaults.colors(
@@ -200,8 +217,10 @@ fun AppNavigation(navController: NavHostController, startDestination: String = S
                     onNavigateToNotifications = { navController.navigate(Screen.Notifications.route) },
                     onNavigateToApps = { navController.navigate("apps") },
                     onNavigateToApp = { appId -> navController.navigate(Screen.AppDetails.createRoute(appId)) },
-                    onNavigateToSensor = { appId, sensorName -> 
-                        navController.navigate(Screen.SensorData.createRoute(appId, listOf(sensorName), listOf("temp", "humi", "batt")))
+                    onNavigateToSensor = { appId, sensorName ->
+                        // Fase 3 genérica: lista vacía = mostrar todas las variables del sensor.
+                        // SensorDataScreen resuelve availableKeys() cuando viene vacío.
+                        navController.navigate(Screen.SensorData.createRoute(appId, listOf(sensorName), emptyList()))
                     }
                 )
             }
@@ -215,6 +234,13 @@ fun AppNavigation(navController: NavHostController, startDestination: String = S
                     onAppClick = { app ->
                         val idToNav = app.id_app_lora ?: app.id.toString()
                         navController.navigate(Screen.AppDetails.createRoute(idToNav))
+                    }
+                )
+            }
+            composable("gateways") {
+                GatewaysScreen(
+                    onGatewayClick = { gateway ->
+                        navController.navigate(Screen.GatewayDetails.createRoute(gateway.gateway_id ?: gateway.id?.toString().orEmpty()))
                     }
                 )
             }
@@ -273,6 +299,13 @@ fun AppNavigation(navController: NavHostController, startDestination: String = S
             }
             composable(Screen.Notifications.route) {
                 NotificationsScreen(onBack = { navController.popBackStack() })
+            }
+            composable(
+                route = Screen.GatewayDetails.route,
+                arguments = listOf(navArgument("gatewayId") { type = NavType.StringType })
+            ) { backStackEntry ->
+                val gatewayId = backStackEntry.arguments?.getString("gatewayId").orEmpty()
+                GatewayDetailsScreen(gatewayId = gatewayId, onBack = { navController.popBackStack() })
             }
             composable(
                 route = Screen.DashboardDetail.route,

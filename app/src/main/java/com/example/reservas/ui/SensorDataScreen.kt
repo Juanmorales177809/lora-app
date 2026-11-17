@@ -273,45 +273,36 @@ fun buildTelemetryValues(
     sensor: SensorLatestResponse,
     selectedVariableKeys: List<String>
 ): List<TelemetryValueUi> {
-    val variables = mutableListOf<TelemetryValueUi>()
-
-    if (selectedVariableKeys.contains("temp") && sensor.temp != null) {
-        variables.add(
-            TelemetryValueUi(
-                key = "temp",
-                label = "Temperature",
-                value = sensor.temp,
-                unit = "°C",
-                precision = 2
+    // Fase 3 genérica: lista vacía = todas las disponibles (ruta desde Home).
+    // Rutas legacy con ["temp","humi","batt"] siguen funcionando.
+    val effectiveKeys = if (selectedVariableKeys.isEmpty()) {
+        sensor.availableKeys().sorted()
+    } else {
+        selectedVariableKeys
+    }
+    // Fase 2 genérica: cualquier variable presente en el sensor.
+    // Compat: temp/humi/batt mantienen label/unidad/precisión clásicas.
+    return effectiveKeys.mapNotNull { key ->
+        val value = sensor.getVariable(key) ?: return@mapNotNull null
+        val norm = key.lowercase().trim()
+        val (label, unit, precision) = when (norm) {
+            "temp", "temperature" -> Triple("Temperature", sensor.getUnit(key).ifBlank { "°C" }, 2)
+            "humi", "humidity" -> Triple("Relative Humidity", sensor.getUnit(key).ifBlank { "%" }, 2)
+            "batt", "battery" -> Triple("Battery Voltage", sensor.getUnit(key).ifBlank { "V" }, 3)
+            else -> Triple(
+                sensor.getLabel(key).ifBlank { humanizeVariableKey(key) },
+                sensor.getUnit(key),
+                if (sensor.getUnit(key).equals("V", ignoreCase = true)) 3 else 2
             )
+        }
+        TelemetryValueUi(
+            key = key,
+            label = label,
+            value = value,
+            unit = unit,
+            precision = precision
         )
     }
-
-    if (selectedVariableKeys.contains("humi") && sensor.humi != null) {
-        variables.add(
-            TelemetryValueUi(
-                key = "humi",
-                label = "Relative Humidity",
-                value = sensor.humi,
-                unit = "%",
-                precision = 2
-            )
-        )
-    }
-
-    if (selectedVariableKeys.contains("batt") && sensor.batt != null) {
-        variables.add(
-            TelemetryValueUi(
-                key = "batt",
-                label = "Battery Voltage",
-                value = sensor.batt,
-                unit = "V",
-                precision = 3
-            )
-        )
-    }
-
-    return variables
 }
 
 data class TelemetryValueUi(

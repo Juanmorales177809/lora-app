@@ -25,6 +25,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.reservas.data.model.*
+import com.example.reservas.data.CoriotRepository
 import com.example.reservas.data.network.RetrofitClient
 import com.example.reservas.ui.theme.*
 import com.example.reservas.util.SecurityManager
@@ -229,11 +230,13 @@ fun DashboardForm(
     onSave: () -> Unit
 ) {
     val context = LocalContext.current
+    val repository = remember { CoriotRepository(RetrofitClient.instance) }
     val scope = rememberCoroutineScope()
     
     var name by remember { mutableStateOf(dashboard?.name ?: "") }
     var description by remember { mutableStateOf(dashboard?.description ?: "") }
     
+    var applicationsWithSensors by remember { mutableStateOf<List<ApplicationWithSensors>>(emptyList()) }
     var sensorOptions by remember { mutableStateOf<List<DashboardSensorOption>>(emptyList()) }
     var selectionMap by remember { mutableStateOf<Map<String, Set<String>>>(emptyMap()) }
     var isLoadingSensors by remember { mutableStateOf(true) }
@@ -252,20 +255,19 @@ fun DashboardForm(
                     .mapValues { (_, widgets) -> widgets.map { it.variable_key }.toSet() }
             }
 
-            val appResponse = RetrofitClient.instance.getApplications("Bearer $token")
+            val appResponse = repository.getApplications(token)
             if (appResponse.isSuccessful) {
+                val loadedAppsWithSensors = mutableListOf<ApplicationWithSensors>()
                 val loadedOptions = mutableListOf<DashboardSensorOption>()
                 appResponse.body()?.applications.orEmpty().forEach { app ->
-                    val appId = app.id_app_lora
-                    if (!appId.isNullOrBlank()) {
-                        val sensorsResponse = RetrofitClient.instance.getSensorsByApplication("Bearer $token", appId)
-                        if (sensorsResponse.isSuccessful) {
-                            sensorsResponse.body()?.sensors.orEmpty().forEach { sensor ->
-                                loadedOptions.add(DashboardSensorOption(applicationId = appId, sensor = sensor))
-                            }
-                        }
+                    val appSensors = fetchSensorsForApp(token, app)
+                    val loraOrNumericId = app.id_app_lora.takeUnless { it.isNullOrBlank() } ?: app.id.toString()
+                    appSensors.forEach { sensor ->
+                        loadedOptions.add(DashboardSensorOption(applicationId = loraOrNumericId, sensor = sensor))
                     }
+                    loadedAppsWithSensors.add(ApplicationWithSensors(app, appSensors))
                 }
+                applicationsWithSensors = loadedAppsWithSensors
                 sensorOptions = loadedOptions.distinctBy(::dashboardSensorKey)
             }
         } catch (e: Exception) {
@@ -310,26 +312,25 @@ fun DashboardForm(
         )
 
         Text(
-            text = "Widgets",
+            text = "Applications",
             fontWeight = FontWeight.Bold,
             color = CoriotNavy
         )
 
         if (isLoadingSensors) {
             CircularProgressIndicator(modifier = Modifier.align(Alignment.CenterHorizontally), color = CoriotNavy)
-        } else if (sensorOptions.isEmpty()) {
-            Text("No sensor nodes available.", color = Color.Gray)
+        } else if (applicationsWithSensors.isEmpty()) {
+            Text("No applications available.", color = Color.Gray)
         } else {
-            sensorOptions.forEach { option ->
-                val key = dashboardSensorKey(option)
-                SensorVariableAccordion(
-                    sensor = option.sensor,
-                    selectedVariables = selectionMap[key].orEmpty(),
-                    onSelectionChanged = { variables ->
+            applicationsWithSensors.forEach { appWithSensors ->
+                ApplicationAccordion(
+                    applicationWithSensors = appWithSensors,
+                    selectionMap = selectionMap,
+                    onSelectionChanged = { sensorKey, variables ->
                         selectionMap = if (variables.isEmpty()) {
-                            selectionMap - key
+                            selectionMap - sensorKey
                         } else {
-                            selectionMap + (key to variables)
+                            selectionMap + (sensorKey to variables)
                         }
                     }
                 )
@@ -361,7 +362,11 @@ fun DashboardForm(
                         if (existing != null) {
                             selectedWidgets.add(existing)
                         } else if (option != null) {
-                            val label = telemetryVariableLabel(variableKey)
+                            // Fase 2 genérica: usar labels/units del sensor si vienen del backend.
+                            val rawLabel = option.sensor.getLabel(variableKey)
+                            val label = rawLabel.ifBlank { telemetryVariableLabel(variableKey) }
+                            val rawUnit = option.sensor.getUnit(variableKey)
+                            val unit = rawUnit.ifBlank { telemetryVariableUnit(variableKey) }
                             selectedWidgets.add(
                                 DashboardWidget(
                                     id = UUID.randomUUID().toString(),
@@ -370,7 +375,7 @@ fun DashboardForm(
                                     sensor_name = option.sensor.sensor_name,
                                     variable_key = variableKey,
                                     variable_label = label,
-                                    unit = telemetryVariableUnit(variableKey),
+                                    unit = unit,
                                     visualization = WidgetVisualization(
                                         type = "stat_card",
                                         chart_type = "none",

@@ -187,7 +187,8 @@ fun AlertRuleForm(
     
     var selectedApp by remember { mutableStateOf<ApplicationResponse?>(null) }
     var selectedSensor by remember { mutableStateOf<SensorLatestResponse?>(null) }
-    var variable by remember { mutableStateOf(rule?.variable ?: "temp") }
+    // Fase 3 genérica: sin default fijo; se autoselecciona al cargar sensor.
+    var variable by remember { mutableStateOf(rule?.variable ?: "") }
     var operator by remember { mutableStateOf(rule?.operador ?: "gt") }
     var threshold by remember { mutableStateOf(rule?.umbral?.toString() ?: "") }
     var title by remember { mutableStateOf(rule?.titulo ?: "") }
@@ -204,11 +205,27 @@ fun AlertRuleForm(
         "eq" to "=="
     )
     
-    val variables = listOf(
-        "temp" to "Temperature",
-        "humi" to "Humidity",
-        "batt" to "Battery"
-    )
+    // Fase 3 genérica: variables del sensor seleccionado + fallback a la regla existente.
+    val sensorKeys = selectedSensor?.availableKeys()?.sorted().orEmpty()
+    val variableKeys = (sensorKeys + listOfNotNull(rule?.variable?.takeIf { it.isNotBlank() }, variable.takeIf { it.isNotBlank() }))
+        .map { it.lowercase().trim() }.filter { it.isNotBlank() }.distinct()
+    val variables = variableKeys.map { k ->
+        val sensor = selectedSensor
+        // Usa label del sensor si existe, si no humaniza.
+        val label = sensor?.getLabel(k)?.ifBlank { telemetryVariableLabel(k) } ?: telemetryVariableLabel(k)
+        k to label
+    }.ifEmpty {
+        // Sin sensor aún: al menos mostrar la variable guardada o temp como compat.
+        if (rule?.variable != null) listOf(rule.variable to telemetryVariableLabel(rule.variable))
+        else listOf("temp" to telemetryVariableLabel("temp"))
+    }
+
+    // Autoseleccionar primera variable disponible si la actual no es válida.
+    LaunchedEffect(sensorKeys) {
+        if (sensorKeys.isNotEmpty() && !sensorKeys.contains(variable.lowercase().trim())) {
+            variable = sensorKeys.first()
+        }
+    }
 
     // Load initial data
     LaunchedEffect(Unit) {
@@ -291,9 +308,9 @@ fun AlertRuleForm(
             DropdownField(
                 label = "Variable",
                 options = variables.map { it.second },
-                selectedOption = variables.find { it.first == variable }?.second ?: "Variable",
+                selectedOption = variables.find { it.first.equals(variable, ignoreCase = true) }?.second ?: "Variable",
                 onOptionSelected = { name ->
-                    variable = variables.find { it.second == name }?.first ?: "temp"
+                    variable = variables.find { it.second == name }?.first ?: variable
                 },
                 modifier = Modifier.weight(1f)
             )
@@ -382,7 +399,7 @@ fun AlertRuleForm(
             Button(
                 onClick = {
                     val token = SecurityManager.getToken(context)
-                    if (token != null && selectedApp != null && selectedSensor != null) {
+                    if (token != null && selectedApp != null && selectedSensor != null && variable.isNotBlank()) {
                         isSaving = true
                         val request = AlertRuleRequest(
                             aplicacion_id = selectedApp!!.id,
@@ -423,7 +440,7 @@ fun AlertRuleForm(
                 },
                 colors = ButtonDefaults.buttonColors(containerColor = CoriotNavy),
                 shape = RoundedCornerShape(8.dp),
-                enabled = !isSaving && selectedApp != null && selectedSensor != null && title.isNotBlank()
+                enabled = !isSaving && selectedApp != null && selectedSensor != null && title.isNotBlank() && variable.isNotBlank()
             ) {
                 if (isSaving) CircularProgressIndicator(color = Color.White, modifier = Modifier.size(18.dp))
                 else Text("SAVE", fontWeight = FontWeight.Bold)
@@ -485,11 +502,16 @@ fun AlertRuleCard(
     onClick: () -> Unit,
     onToggle: (Boolean) -> Unit
 ) {
-    val (variableIcon, iconColor) = when (rule.variable.lowercase()) {
-        "temp" -> Icons.Default.DeviceThermostat to Color(0xFF1890FF)
-        "humi" -> Icons.Default.WaterDrop to Color(0xFF13C2C2)
-        "batt" -> Icons.Default.BatteryChargingFull to Color(0xFF52C41A)
-        else -> Icons.Default.NotificationsActive to CoriotNavy
+    // Fase 3 genérica: iconos especiales para conocidas, genérico Sensors para el resto.
+    val (variableIcon, iconColor) = when (rule.variable.lowercase().trim()) {
+        "temp", "temperature" -> Icons.Default.DeviceThermostat to Color(0xFF1890FF)
+        "humi", "humidity" -> Icons.Default.WaterDrop to Color(0xFF13C2C2)
+        "batt", "battery" -> Icons.Default.BatteryChargingFull to Color(0xFF52C41A)
+        "co2", "co₂" -> Icons.Default.Cloud to Color(0xFF722ED1)
+        "ph" -> Icons.Default.Science to Color(0xFF13C2C2)
+        "pressure", "press" -> Icons.Default.Speed to Color(0xFFFAAD14)
+        "lux", "light" -> Icons.Default.LightMode to Color(0xFFFFC107)
+        else -> Icons.Default.Sensors to CoriotNavy
     }
 
     val operatorSymbol = when (rule.operador.lowercase()) {

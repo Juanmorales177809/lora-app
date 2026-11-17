@@ -87,7 +87,7 @@ class MainActivity : ComponentActivity() {
                                 horizontalAlignment = Alignment.CenterHorizontally,
                                 verticalArrangement = Arrangement.spacedBy(16.dp)
                             ) {
-                                Text(text = "No se pudo validar la sesión")
+                                Text(text = "No se pudo validar la sesiÃ³n")
                                 Button(onClick = { retryKey++ }) {
                                     Text(text = "Reintentar")
                                 }

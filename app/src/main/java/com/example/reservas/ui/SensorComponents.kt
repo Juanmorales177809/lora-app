@@ -6,6 +6,7 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Apps
 import androidx.compose.material.icons.filled.ExpandLess
 import androidx.compose.material.icons.filled.ExpandMore
 import androidx.compose.material.icons.filled.Router
@@ -17,7 +18,9 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.example.reservas.data.model.ApplicationResponse
 import com.example.reservas.data.model.SensorLatestResponse
+import com.example.reservas.data.network.RetrofitClient
 import com.example.reservas.ui.theme.CoriotNavy
 import com.example.reservas.ui.theme.SpaceMonoFontFamily
 import com.example.reservas.util.formatDate
@@ -31,13 +34,26 @@ fun dashboardSensorKey(option: DashboardSensorOption): String {
     return "${option.applicationId}::${option.sensor.sensor_name}"
 }
 
-fun telemetryVariableLabel(key: String): String {
-    return when (key.lowercase().trim()) {
+fun humanizeVariableKey(key: String): String {
+    val trimmed = key.trim()
+    if (trimmed.isEmpty()) return trimmed
+    return when (trimmed.lowercase()) {
         "temp" -> "Temperature"
         "humi" -> "Relative Humidity"
         "batt" -> "Battery Voltage"
-        else -> key.replace("_", " ").replaceFirstChar { it.uppercase() }
+        else -> trimmed.replace("_", " ").replace("-", " ")
+            .split(" ").filter { it.isNotBlank() }
+            .joinToString(" ") { w -> w.replaceFirstChar { it.uppercase() } }
     }
+}
+
+fun telemetryVariableLabel(key: String): String {
+    return humanizeVariableKey(key)
+}
+
+fun telemetryVariableLabel(key: String, labels: Map<String, String>): String {
+    labels[key.lowercase().trim()]?.takeIf { it.isNotBlank() }?.let { return it }
+    return humanizeVariableKey(key)
 }
 
 fun telemetryVariableUnit(key: String): String {
@@ -47,6 +63,11 @@ fun telemetryVariableUnit(key: String): String {
         "batt" -> "V"
         else -> ""
     }
+}
+
+fun telemetryVariableUnit(key: String, units: Map<String, String>): String {
+    units[key.lowercase().trim()]?.takeIf { it.isNotBlank() }?.let { return it }
+    return telemetryVariableUnit(key)
 }
 
 fun defaultFutureChartType(key: String): String {
@@ -191,17 +212,15 @@ fun buildAvailableTelemetryVariables(
     sensor: SensorLatestResponse,
     selectedVariables: Set<String>
 ): List<TelemetryVariableUi> {
-    val variables = mutableListOf<TelemetryVariableUi>()
-    if (sensor.temp != null) {
-        variables.add(TelemetryVariableUi("temp", "Temperature", "Unit: °C", selectedVariables.contains("temp")))
+    // Fase 1 genérica: exponer toda key de sensor.variables + compat temp/humi/batt.
+    val keys = sensor.availableKeys()
+    if (keys.isEmpty()) return emptyList()
+    return keys.sorted().map { key ->
+        val label = sensor.getLabel(key).ifBlank { humanizeVariableKey(key) }
+        val unit = sensor.getUnit(key).ifBlank { telemetryVariableUnit(key) }
+        val unitLabel = if (unit.isBlank()) "Unit: --" else "Unit: $unit"
+        TelemetryVariableUi(key, label, unitLabel, selectedVariables.contains(key))
     }
-    if (sensor.humi != null) {
-        variables.add(TelemetryVariableUi("humi", "Relative Humidity", "Unit: %", selectedVariables.contains("humi")))
-    }
-    if (sensor.batt != null) {
-        variables.add(TelemetryVariableUi("batt", "Battery Voltage", "Unit: V", selectedVariables.contains("batt")))
-    }
-    return variables
 }
 
 data class TelemetryVariableUi(
@@ -210,3 +229,150 @@ data class TelemetryVariableUi(
     val unitLabel: String,
     val isSelected: Boolean
 )
+
+data class ApplicationWithSensors(
+    val application: ApplicationResponse,
+    val sensors: List<SensorLatestResponse>
+)
+
+@Composable
+fun ApplicationAccordion(
+    applicationWithSensors: ApplicationWithSensors,
+    selectionMap: Map<String, Set<String>>,
+    onSelectionChanged: (sensorKey: String, variables: Set<String>) -> Unit
+) {
+    var expanded by remember { mutableStateOf(false) }
+    val app = applicationWithSensors.application
+    val sensors = applicationWithSensors.sensors
+
+    val selectedCountInApp = sensors.sumOf { sensor ->
+        val key = "${app.id_app_lora.orEmpty()}::${sensor.sensor_name}"
+        selectionMap[key]?.size ?: 0
+    }
+
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(16.dp),
+        colors = CardDefaults.cardColors(containerColor = Color.White),
+        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
+    ) {
+        Column {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clickable { expanded = !expanded }
+                    .padding(20.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Surface(
+                    modifier = Modifier.size(40.dp),
+                    shape = CircleShape,
+                    color = CoriotNavy.copy(alpha = 0.1f)
+                ) {
+                    Box(contentAlignment = Alignment.Center) {
+                        Icon(
+                            imageVector = Icons.Default.Apps,
+                            contentDescription = null,
+                            tint = CoriotNavy,
+                            modifier = Modifier.size(24.dp)
+                        )
+                    }
+                }
+
+                Spacer(modifier = Modifier.width(16.dp))
+
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = app.nombre,
+                        fontSize = 18.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = CoriotNavy,
+                        fontFamily = SpaceMonoFontFamily
+                    )
+                    if (!app.id_app_lora.isNullOrBlank()) {
+                        Text(
+                            text = "App ID: ${app.id_app_lora}",
+                            fontSize = 12.sp,
+                            color = Color.Gray
+                        )
+                    }
+                    Text(
+                        text = "${sensors.size} sensor${if (sensors.size != 1) "es" else ""}" +
+                                if (selectedCountInApp > 0) " ($selectedCountInApp seleccionado${if (selectedCountInApp != 1) "s" else ""})" else "",
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.Medium,
+                        color = if (selectedCountInApp > 0) CoriotNavy else Color.Gray
+                    )
+                }
+
+                Icon(
+                    imageVector = if (expanded) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
+                    contentDescription = null,
+                    tint = Color.Gray
+                )
+            }
+
+            if (expanded) {
+                HorizontalDivider(
+                    modifier = Modifier.padding(horizontal = 16.dp),
+                    color = Color.Gray.copy(alpha = 0.2f)
+                )
+                Column(
+                    modifier = Modifier.padding(16.dp),
+                    verticalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    if (sensors.isEmpty()) {
+                        Text(
+                            text = "No hay sensores disponibles en esta aplicación",
+                            fontSize = 13.sp,
+                            color = Color.Gray,
+                            modifier = Modifier.padding(vertical = 4.dp)
+                        )
+                    } else {
+                        sensors.forEach { sensor ->
+                            val sensorKey = "${app.id_app_lora.orEmpty()}::${sensor.sensor_name}"
+                            SensorVariableAccordion(
+                                sensor = sensor,
+                                selectedVariables = selectionMap[sensorKey].orEmpty(),
+                                onSelectionChanged = { variables ->
+                                    onSelectionChanged(sensorKey, variables)
+                                }
+                            )
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+suspend fun fetchSensorsForApp(token: String, app: ApplicationResponse): List<SensorLatestResponse> {
+    val candidates = listOfNotNull(
+        app.id_app_lora?.takeIf { it.isNotBlank() },
+        app.id.toString()
+    ).distinct()
+
+    for (appIdParam in candidates) {
+        try {
+            val resp = RetrofitClient.instance.getSensorsByApplication("Bearer $token", appIdParam)
+            if (resp.isSuccessful) {
+                val list = resp.body()?.sensors.orEmpty()
+                if (list.isNotEmpty()) return list
+            }
+        } catch (e: Exception) {
+            Log.w("SensorComponents", "getSensorsByApplication failed for $appIdParam", e)
+        }
+
+        try {
+            val resp = RetrofitClient.instance.getSensorsListByAppLora("Bearer $token", appIdParam)
+            if (resp.isSuccessful) {
+                val list = resp.body()?.sensors.orEmpty()
+                if (list.isNotEmpty()) return list
+            }
+        } catch (e: Exception) {
+            Log.w("SensorComponents", "getSensorsListByAppLora failed for $appIdParam", e)
+        }
+    }
+
+    return emptyList()
+}

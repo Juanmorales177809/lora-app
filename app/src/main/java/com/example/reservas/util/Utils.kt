@@ -20,6 +20,21 @@ fun formatDate(isoDate: String?): String {
     }
 }
 
+fun formatLastSeen(isoDate: String?): String {
+    if (isoDate.isNullOrBlank()) return "Sin fecha"
+    return try {
+        val cleanedDate = isoDate.substringBefore(".").replace("Z", "")
+        val inputFormat = SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss", Locale.US)
+        inputFormat.timeZone = TimeZone.getTimeZone("UTC")
+        val date = inputFormat.parse(cleanedDate)
+        val outputFormat = SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.US)
+        date?.let { outputFormat.format(it) } ?: "Fecha inválida"
+    } catch (e: Exception) {
+        Log.e("Utils", "Error formatting last seen: $isoDate", e)
+        isoDate
+    }
+}
+
 fun isInactive(lastUpdate: String?): Boolean {
     if (lastUpdate.isNullOrBlank()) return true
     return try {
